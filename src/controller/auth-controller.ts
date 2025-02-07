@@ -2,6 +2,9 @@ import jwt from "jsonwebtoken";
 import { Request, Response } from 'express';
 import prisma from "../db/prisma.js";
 import bcryptjs from "bcryptjs";
+import fs from "fs-extra";
+import path from "path";
+import { upload } from "../index.js";
 
 const generateToken = (userId: string, res: Response) => {
     const token = jwt.sign({ userId }, process.env.JWT_SECRET!, {
@@ -19,92 +22,112 @@ const generateToken = (userId: string, res: Response) => {
 };
 
 export const register = async (req: Request, res: Response) => {
-    try {
-        const { fullname, username, password, confirmpassword, gender, profilePic } = req.body;
-
-        if (!fullname || !username || !password || !confirmpassword || !gender) {
-            return res.status(400).json({
-                code: 400,
-                status: "error",
-                message: "masukan semua kolom yang diperlukan"
-            });
-        }
-        
-        if (password !== confirmpassword) {
-            return res.status(400).json({
-                code: 400,
-                status: "error",
-                message: "password dan konfirmasi password tidak sama"
+    upload.single("profilePic")(req, res, async (err) => {
+        if (err) {
+            return res.status(400).json({ 
+                code: 400, 
+                status: "error", 
+                message: err.message 
             });
         }
 
-        const user = await prisma.user.findUnique({ where: { username } });
+        try {
+            const { fullname, username, password, confirmpassword, gender } = req.body;
+            const profilePic = req.file ? req.file.filename : null;
 
-        if (user) {
-            return res.status(400).json({
-                code: 400,
-                status: "error",
-                message: "Username sudah ada"
-            });
-        }
-
-        const salt = await bcryptjs.genSalt(10);
-        const hashPassword = await bcryptjs.hash(password, salt);
-
-        // Generate default avatar jika profilePic tidak disediakan
-        const boyProfilePic = `https://avatar.iran.liara.run/public/boy?username=${username}`;
-        const girlProfilePic = `https://avatar.iran.liara.run/public/girl?username=${username}`;
-        const defaultProfilePic = gender === "male" ? boyProfilePic : girlProfilePic;
-
-        const newUser = await prisma.user.create({
-            data: {
-                fullname,
-                username,
-                password: hashPassword,
-                gender,
-
-                profilePic: profilePic || defaultProfilePic
+            if (!fullname || !username || !password || !confirmpassword || !gender) {
+                return res.status(400).json({
+                    code: 400,
+                    status: "error",
+                    message: "Masukkan semua kolom yang diperlukan"
+                });
             }
-        });
 
-        if (newUser) {
-            generateToken(newUser.id, res);
+            if (password !== confirmpassword) {
+                return res.status(400).json({
+                    code: 400,
+                    status: "error",
+                    message: "Password dan konfirmasi password tidak sama"
+                });
+            }
 
-            res.status(201).json({
-                code: 201,
-                status: "success",
-                message: "daftar akun berhasil",
-                user: {
-                    id: newUser.id,
-                    fullname: newUser.fullname,
-                    username: newUser.username,
-                    gender: newUser.gender,
-                    profilePic: newUser.profilePic
+            const userExists = await prisma.user.findUnique({ where: { username } });
+            if (userExists) {
+                return res.status(400).json({
+                    code: 400,
+                    status: "error",
+                    message: "Username sudah ada"
+                });
+            }
+
+            const salt = await bcryptjs.genSalt(10);
+            const hashPassword = await bcryptjs.hash(password, salt);
+
+            const boyProfilePic = `https://avatar.iran.liara.run/public/boy?username=${username}`;
+            const girlProfilePic = `https://avatar.iran.liara.run/public/girl?username=${username}`;
+            const defaultProfilePic = gender === "male" ? boyProfilePic : girlProfilePic;
+
+            const imagePath = profilePic ? `/pict/${profilePic}` : defaultProfilePic;
+
+            const newUser = await prisma.user.create({
+                data: {
+                    fullname,
+                    username,
+                    password: hashPassword,
+                    gender,
+                    profilePic: imagePath
                 }
             });
-        } else {
-            res.status(500).json({
-                code: 500,
-                status: "error",
-                message: "Gagal membuat user"
-            });
+
+            if (newUser) {
+                const token = jwt.sign({ id: newUser.id }, "your-secret-key", { expiresIn: "1d" });
+
+                res.status(201).json({
+                    code: 201,
+                    status: "success",
+                    message: "Daftar akun berhasil",
+                    token,
+                    user: {
+                        id: newUser.id,
+                        fullname: newUser.fullname,
+                        username: newUser.username,
+                        gender: newUser.gender,
+                        profilePic: newUser.profilePic
+                    }
+                });
+            } else {
+                res.status(500).json({
+                    code: 500,
+                    status: "error",
+                    message: "Gagal membuat user"
+                });
+            }
+        } catch (error) {
+            console.error("Error in register controller:");
+            res.status(500).json({ code: 500, status: "error", message: "Internal Server Error" });
         }
-    } catch (error: any) {
-        console.log("Error in signup controller", error.message);
-        res.status(500).json({ error: "Internal Server Error" });
-    }
+    });
 };
 
 export const login = async (req: Request, res: Response) => {
     try {
         const {username, password} = req.body;
-        const user = await prisma.user.findUnique({where: {username}});
+
+        if (!username || !password) {
+            return res.status(400).json({
+                code: 400,
+                status: "error",
+                message: "masukan username dan password"
+            });
+        }
+
+        const user = await prisma.user.findUnique({where: {username: username}});
 
         if (!user) {
             return res.status(400).json({
                 code: 400,
                 status: "error",
-                message: "Username atau password salah"
+                message: "User tidak ditemukan"
             })
         }
 
@@ -114,16 +137,19 @@ export const login = async (req: Request, res: Response) => {
             return res.status(400).json({
                 code: 400,
                 status: "error",
-                message: "Username atau password salah"
+                message: "password salah"
             })
         }
 
         generateToken(user.id, res);
 
+        const token = jwt.sign({ id: user.id }, "your-secret-key", { expiresIn: "1d" });
+
         res.status(200).json({
             code:200,
             status: "success",
             massage: "login berhasil",
+            token: token,
             data: {
                 id: user.id,
                 fullname: user.fullname,
