@@ -4,10 +4,11 @@ import router from "./routes/route.js";
 import path from "path";
 import cookieParser from "cookie-parser";
 import multer from "multer";
+import { app, server } from "./utils/socket.js";
 
 dotenv.config();
 
-const app = express();
+// const app = express();
 app.use(express.json());
 app.use('/api', router);
 app.use(cookieParser());
@@ -47,6 +48,6 @@ if (process.env.NODE_ENV !== "development") {
 		res.sendFile(path.join(__dirname, "frontend", "dist", "index.html"));
 	});
 }
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server berjalan di http://localhost:${PORT}`);
 });
