@@ -14,6 +14,7 @@ app.use('/api', router);
 app.use(cookieParser());
 app.use(express.urlencoded({ extended: true }));
 
+
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         cb(null, path.join(__dirname, "/src/pic"));
