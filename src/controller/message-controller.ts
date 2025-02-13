@@ -223,17 +223,42 @@ export const getUsersForSidebar = async (req: Request, res: Response) => {
 export const editMessage = async (req: Request, res: Response) => {
     try {
         const { messageId } = req.params;
-        const { newMessage } = req.body;
-        
-        if (!req.user) {
-            return res.status(401).json({ error: "Unauthorized - User not found" });
-        }
+        const { message } = req.body;
 
-        const message = await prisma.message.findUnique({
-            where: { id: messageId }
-        });
+        // Debug log 1: Check incoming request
+        // console.log('Edit Message Request:', {
+        //     messageId,
+        //     userId: req.user?.id,
+        //     newMessage: message
+        // });
 
         if (!message) {
+            return res.status(400).json({
+                code: 400,
+                status: "error",
+                message: "Pesan tidak boleh kosong"
+            });
+        }
+
+        if (!req.user) {
+            return res.status(401).json({ 
+                code: 401,
+                status: "error",
+                message: "Unauthorized - User not found" 
+            });
+        }
+
+        const existingMessage = await prisma.message.findUnique({
+            where: { id: messageId },
+        });
+
+        // console.log('Existing Message:', {
+        //     message: existingMessage,
+        //     requestUserId: req.user.id,
+        //     isOwner: existingMessage?.senderId === req.user.id
+        // });
+
+        if (!existingMessage) {
             return res.status(404).json({
                 code: 404,
                 status: "error",
@@ -241,20 +266,37 @@ export const editMessage = async (req: Request, res: Response) => {
             });
         }
 
-        if (message.senderId !== req.user.id) {
+        // Explicit comparison for ownership check
+        const isMessageOwner = existingMessage.senderId === req.user.id;
+        // console.log('Ownership Check:', {
+        //     messageSenderId: existingMessage.senderId,
+        //     currentUserId: req.user.id,
+        //     isOwner: isMessageOwner
+        // });
+
+        if (!isMessageOwner) {
             return res.status(403).json({
                 code: 403,
                 status: "error",
-                message: "Tidak dapat mengedit pesan orang lain"
+                message: "Anda tidak memiliki izin untuk mengedit pesan ini",
+                debug: {
+                    messageSenderId: existingMessage.senderId,
+                    currentUserId: req.user.id
+                }
             });
         }
 
         const updatedMessage = await prisma.message.update({
             where: { id: messageId },
-            data: { body: newMessage }
+            data: { 
+                body: message,
+                updatedAt: new Date()
+            }
         });
 
-        const receiverSocketId = getReceiverSocketId(message.senderId);
+        // console.log('Updated Message:', updatedMessage);
+
+        const receiverSocketId = getReceiverSocketId(existingMessage.senderId);
         if (receiverSocketId) {
             io.to(receiverSocketId).emit("messageUpdated", updatedMessage);
         }
@@ -267,7 +309,12 @@ export const editMessage = async (req: Request, res: Response) => {
         });
     } catch (error: any) {
         console.error("Error in editMessage: ", error.message);
-        res.status(500).json({ error: "Internal server error" });
+        res.status(500).json({ 
+            code: 500,
+            status: "error",
+            message: "Internal server error",
+            debug: error.message
+        });
     }
 };
 
@@ -283,11 +330,22 @@ export const deleteMessage = async (req: DeleteMessageRequest, res: Response) =>
         const { deleteFor } = req.body;
         
         if (!req.user) {
-            return res.status(401).json({ error: "Unauthorized - User not found" });
+            return res.status(401).json({ 
+                code: 401,
+                status: "error", 
+                message: "Unauthorized - User not found" 
+            });
         }
 
         const message = await prisma.message.findUnique({
-            where: { id: messageId }
+            where: { id: messageId },
+            include: {
+                conversation: {
+                    select: {
+                        partipantsIds: true
+                    }
+                }
+            }
         });
 
         if (!message) {
@@ -306,25 +364,34 @@ export const deleteMessage = async (req: DeleteMessageRequest, res: Response) =>
             });
         }
 
-        let updatedMessage;
+        let result;
         if (deleteFor === 'all') {
-            updatedMessage = await prisma.message.update({
-                where: { id: messageId },
-                data: { 
-                    isDeleted: true,
-                    body: null,
-                    fileUrl: null,
-                    fileName: null,
-                    fileType: null
-                }
-            });
-
-            // Delete the actual file if it exists
+            // Hapus file jika ada
             if (message.fileUrl) {
                 await deleteMessageFile(message.fileUrl);
             }
+
+            // Hapus pesan dari database
+            result = await prisma.message.delete({
+                where: { id: messageId }
+            });
+
+            // Emit socket event ke semua partisipan
+            if (message.conversation?.partipantsIds) {
+                message.conversation.partipantsIds.forEach(participantId => {
+                    const receiverSocketId = getReceiverSocketId(participantId);
+                    if (receiverSocketId) {
+                        io.to(receiverSocketId).emit("messageDeleted", {
+                            messageId,
+                            deleteFor: 'all',
+                            deleteBy: req.user?.id
+                        });
+                    }
+                });
+            }
         } else {
-            updatedMessage = await prisma.message.update({
+            // Hapus hanya untuk pengguna tertentu
+            result = await prisma.message.update({
                 where: { id: messageId },
                 data: { 
                     deletedFor: {
@@ -332,12 +399,33 @@ export const deleteMessage = async (req: DeleteMessageRequest, res: Response) =>
                     }
                 }
             });
+
+            const receiverSocketId = getReceiverSocketId(req.user.id);
+            if (receiverSocketId) {
+                io.to(receiverSocketId).emit("messageDeleted", {
+                    messageId,
+                    deleteFor: 'me',
+                    deleteBy: req.user.id
+                });
+            }
         }
 
-        // ... [rest of your existing code]
+        res.status(200).json({
+            code: 200,
+            status: "success",
+            message: deleteFor === 'all' ? 
+                "Pesan berhasil dihapus untuk semua orang" : 
+                "Pesan berhasil dihapus untuk Anda",
+            data: result
+        });
 
     } catch (error: any) {
         console.error("Error in deleteMessage: ", error.message);
-        res.status(500).json({ error: "Internal server error" });
+        res.status(500).json({ 
+            code: 500,
+            status: "error",
+            message: "Internal server error",
+            error: error.message
+        });
     }
 };

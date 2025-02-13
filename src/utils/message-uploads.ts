@@ -9,7 +9,6 @@ const __dirname = path.dirname(__filename);
 const messageStorage = multer.diskStorage({
     destination: (req, file, cb) => {
         const uploadDir = path.join(__dirname, '../../src/pic');
-        // Create directory if it doesn't exist (seharusnya sudah ada)
         if (!fs.existsSync(uploadDir)) {
             fs.mkdirSync(uploadDir, { recursive: true });
         }
@@ -36,13 +35,11 @@ export const messageUpload = multer({
     }
 });
 
-// Helper function to delete message attachments
 export const deleteMessageFile = async (filePath: string) => {
     try {
         if (!filePath) return;
         
         const fileName = path.basename(filePath);
-        // Only delete if it's a message file (starts with 'msg-')
         if (fileName.startsWith('msg-')) {
             const fullPath = path.join(__dirname, '../../src/pic', fileName);
             if (await fs.pathExists(fullPath)) {
