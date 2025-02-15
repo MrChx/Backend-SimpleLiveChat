@@ -14,46 +14,142 @@ datasource db {
 }
 
 model User {
-  id String @id @default(cuid())
-  username String @unique
-  fullname String
-  password String
-  gender Gender
-  profilePic String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  conversationsIds String[]
+  id                    String              @id @default(cuid())
+  username              String              @unique
+  fullname              String
+  password              String
+  gender                Gender
+  profilePic            String?
+  isOnline             Boolean             @default(false)
+  lastSeen             DateTime?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
 
-  conversations Conversation[]
-  messages Message[]
+  // Conversations
+  conversations         Conversation[]      @relation("UserConversations")
+  groupConversations   GroupConversation[] @relation("GroupMembers")
+  adminGroups          GroupConversation[] @relation("GroupAdmin")
+
+  // Messages
+  messages             Message[]           @relation("UserMessages")
+  reactions            Reaction[]          @relation("UserReactions")
+
+  // Friend Requests
+  friendRequestsReceived FriendRequest[]    @relation("ReceivedRequests")
+  friendRequestsSent    FriendRequest[]     @relation("SentRequests")
+
+  // Blocked Users
+  blockedUsers         BlockedUser[]       @relation("BlockerRelation")
+  blockedBy            BlockedUser[]       @relation("BlockedRelation")
+
+  // Call Logs
+  outgoingCalls        CallLog[]           @relation("CallerRelation")
+  incomingCalls        CallLog[]           @relation("ReceiverRelation")
 }
 
 model Conversation {
-  id String @id @default(cuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String    @id @default(cuid())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  participants  User[]    @relation("UserConversations")
+  messages      Message[]
+}
 
-  partipantsIds String[]
-  participants User[]
+model GroupConversation {
+  id        String    @id @default(cuid())
+  name      String
+  adminId   String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  messages Message[]
-  messagesIds String[]
+  admin     User      @relation("GroupAdmin", fields: [adminId], references: [id])
+  members   User[]    @relation("GroupMembers")
+  messages  Message[]
 }
 
 model Message {
-  id            String      @id @default(cuid())
-  conversationId String
-  conversation  Conversation @relation(fields: [conversationId], references: [id])
+  id            String        @id @default(cuid())
+  conversationId String?
+  groupId       String?
   senderId      String
-  sender        User        @relation(fields: [senderId], references: [id])
-  body          String?  
-  fileUrl       String? 
+  body          String?
+  fileUrl       String?
   fileName      String?
   fileType      String?
-  isDeleted     Boolean     @default(false)
-  deletedFor    String[]    @default([])
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  isDeleted     Boolean       @default(false)
+  deletedFor    String[]      @default([])
+  isEdited      Boolean       @default(false)
+  editedAt      DateTime?
+  status        MessageStatus @default(sent)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  conversation  Conversation? @relation(fields: [conversationId], references: [id])
+  groupChat     GroupConversation? @relation(fields: [groupId], references: [id])
+  sender        User          @relation("UserMessages", fields: [senderId], references: [id])
+  reactions     Reaction[]
+}
+
+model Reaction {
+  id        String   @id @default(cuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  message   Message  @relation(fields: [messageId], references: [id])
+  user      User     @relation("UserReactions", fields: [userId], references: [id])
+}
+
+model FriendRequest {
+  id         String        @id @default(cuid())
+  senderId   String
+  receiverId String
+  status     RequestStatus @default(pending)
+  createdAt  DateTime      @default(now())
+
+  sender     User          @relation("SentRequests", fields: [senderId], references: [id])
+  receiver   User          @relation("ReceivedRequests", fields: [receiverId], references: [id])
+}
+
+model BlockedUser {
+  id        String   @id @default(cuid())
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+
+  blocker   User     @relation("BlockerRelation", fields: [blockerId], references: [id])
+  blocked   User     @relation("BlockedRelation", fields: [blockedId], references: [id])
+}
+
+model CallLog {
+  id         String   @id @default(cuid())
+  callerId   String
+  receiverId String
+  callType   CallType
+  duration   Int
+  createdAt  DateTime @default(now())
+
+  caller    User     @relation("CallerRelation", fields: [callerId], references: [id])
+  receiver  User     @relation("ReceiverRelation", fields: [receiverId], references: [id])
+}
+
+enum RequestStatus {
+  pending
+  accepted
+  rejected
+}
+
+enum MessageStatus {
+  sent
+  delivered
+  read
+}
+
+enum CallType {
+  voice
+  video
 }
 
 enum Gender {
