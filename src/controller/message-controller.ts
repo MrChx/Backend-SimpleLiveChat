@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import prisma from "../db/prisma.js";
 import { getReceiverSocketId, io } from "../utils/socket.js";
-import { messageUpload, deleteMessageFile } from "../utils/message-uploads.js";
+import { deleteMessageFile } from "../utils/message-uploads.js";
 
 export const sendMessage = async (req: Request, res: Response) => {
 	try {
@@ -50,22 +50,29 @@ export const sendMessage = async (req: Request, res: Response) => {
         }
 
 		let conversation = await prisma.conversation.findFirst({
-			where: {
-				partipantsIds: {
-					hasEvery: [senderId, receiverId],
-				},
-			},
-		});
+            where: {
+                participants: {
+                    every: {
+                        id: {
+                            in: [senderId, receiverId]
+                        }
+                    }
+                }
+            }
+        });
 
 		if (!conversation) {
-			conversation = await prisma.conversation.create({
-				data: {
-					partipantsIds: {
-						set: [senderId, receiverId],
-					},
-				},
-			});
-		}
+            conversation = await prisma.conversation.create({
+                data: {
+                    participants: {
+                        connect: [
+                            { id: senderId },
+                            { id: receiverId }
+                        ]
+                    }
+                }
+            });
+        }
 
 		let fileData = null;
         if (file) {
@@ -122,6 +129,189 @@ export const sendMessage = async (req: Request, res: Response) => {
 	}
 };
 
+export const updateMessageStatus = async (req: Request, res: Response) => {
+    try {
+        const { messageId } = req.params;
+        const { status } = req.body;
+
+        if (!req.user) {
+            return res.status(401).json({ error: "Unauthorized - User not found" });
+        }
+
+        if (!["sent", "delivered", "read"].includes(status)) {
+            return res.status(400).json({
+                code: 400,
+                status: "error",
+                message: "Status pesan tidak valid"
+            });
+        }
+
+        const message = await prisma.message.findUnique({
+            where: { id: messageId },
+            include: {
+                conversation: {
+                    select: {
+                        participants: {
+                            select: {
+                                id: true
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (!message) {
+            return res.status(404).json({
+                code: 404,
+                status: "error",
+                message: "Pesan tidak ditemukan"
+            });
+        }
+
+        const participantIds = message.conversation?.participants.map(participant => participant.id);
+        if (!participantIds?.includes(req.user.id) || message.senderId === req.user.id) {
+            return res.status(403).json({
+                code: 403,
+                status: "error",
+                message: "Tidak memiliki izin untuk mengubah status pesan"
+            });
+        }
+
+        const updatedMessage = await prisma.message.update({
+            where: { id: messageId },
+            data: { status }
+        });
+
+        const senderSocketId = getReceiverSocketId(message.senderId);
+        if (senderSocketId) {
+            io.to(senderSocketId).emit("messageStatusUpdate", {
+                messageId,
+                status,
+                updatedAt: updatedMessage.updatedAt
+            });
+        }
+
+        res.status(200).json({
+            code: 200,
+            status: "success",
+            message: "Status pesan berhasil diperbarui",
+            data: updatedMessage
+        });
+
+    } catch (error) {
+        console.error("Error in updateMessageStatus:", error);
+        res.status(500).json({
+            code: 500,
+            status: "error",
+            message: "Internal server error"
+        });
+    }
+};
+
+export const updateConversationMessageStatus = async (req: Request, res: Response) => {
+    try {
+        const { conversationId } = req.params;
+        const { status } = req.body;
+
+        if (!req.user) {
+            return res.status(401).json({
+                code: 401,
+                status: "error",
+                message: "Unauthorized"
+            });
+        }
+
+        if (!["delivered", "read"].includes(status)) {
+            return res.status(400).json({
+                code: 400,
+                status: "error",
+                message: "Status tidak valid. Gunakan: delivered atau read"
+            });
+        }
+
+        const conversation = await prisma.conversation.findUnique({
+            where: { id: conversationId },
+            include: {
+                participants: {
+                    select: {
+                        id: true
+                    }
+                }
+            }
+        });
+
+        if (!conversation) {
+            return res.status(404).json({
+                code: 404,
+                status: "error",
+                message: "Percakapan tidak ditemukan"
+            });
+        }
+
+        const participantIds = conversation.participants.map(participant => participant.id);
+        if (!participantIds.includes(req.user.id)) {
+            return res.status(403).json({
+                code: 403,
+                status: "error",
+                message: "Tidak memiliki izin untuk mengubah status pesan"
+            });
+        }
+
+        const updatedMessages = await prisma.message.updateMany({
+            where: {
+                conversationId,
+                senderId: {
+                    not: req.user.id
+                },
+                status: {
+                    in: status === "read" ? ["sent", "delivered"] : ["sent"]
+                }
+            },
+            data: { status }
+        });
+
+        const messages = await prisma.message.findMany({
+            where: {
+                conversationId,
+                senderId: {
+                    not: req.user.id
+                }
+            }
+        });
+
+        messages.forEach(message => {
+            const senderSocketId = getReceiverSocketId(message.senderId);
+            if (senderSocketId) {
+                io.to(senderSocketId).emit("messageStatusUpdate", {
+                    messageId: message.id,
+                    status,
+                    updatedAt: new Date()
+                });
+            }
+        });
+
+        res.status(200).json({
+            code: 200,
+            status: "success",
+            message: `${updatedMessages.count} pesan telah diperbarui statusnya menjadi ${status}`,
+            data: {
+                updatedCount: updatedMessages.count,
+                status
+            }
+        });
+
+    } catch (error) {
+        console.error("Error in updateConversationMessageStatus:", error);
+        res.status(500).json({
+            code: 500,
+            status: "error",
+            message: "Internal server error"
+        });
+    }
+};
+
+
 export const getMessages = async (req: Request, res: Response) => {
 	try {
 		const { id: userToChatId } = req.params;
@@ -152,19 +342,28 @@ export const getMessages = async (req: Request, res: Response) => {
 		}
 
 		const conversation = await prisma.conversation.findFirst({
-			where: {
-				partipantsIds: {
-					hasEvery: [senderId, userToChatId],
-				},
-			},
-			include: {
-				messages: {
-					orderBy: {
-						createdAt: "asc",
-					},
-				},
-			},
-		});
+            where: {
+                participants: {
+                    every: {
+                        id: {
+                            in: [senderId, userToChatId]
+                        }
+                    }
+                }
+            },
+            include: {
+                messages: {
+                    where: {
+                        deletedFor: {
+                            hasEvery: []
+                        }
+                    },
+                    orderBy: {
+                        createdAt: "asc"
+                    }
+                }
+            }
+        });
 
 		if (!conversation) {
 			return res.status(200).json({
@@ -341,8 +540,12 @@ export const deleteMessage = async (req: DeleteMessageRequest, res: Response) =>
             where: { id: messageId },
             include: {
                 conversation: {
-                    select: {
-                        partipantsIds: true
+                    include: {
+                        participants: {
+                            select: {
+                                id: true
+                            }
+                        }
                     }
                 }
             }
@@ -366,20 +569,17 @@ export const deleteMessage = async (req: DeleteMessageRequest, res: Response) =>
 
         let result;
         if (deleteFor === 'all') {
-            // Hapus file jika ada
             if (message.fileUrl) {
                 await deleteMessageFile(message.fileUrl);
             }
 
-            // Hapus pesan dari database
             result = await prisma.message.delete({
                 where: { id: messageId }
             });
 
-            // Emit socket event ke semua partisipan
-            if (message.conversation?.partipantsIds) {
-                message.conversation.partipantsIds.forEach(participantId => {
-                    const receiverSocketId = getReceiverSocketId(participantId);
+            if (message.conversation?.participants) {
+                message.conversation.participants.forEach(participant => {
+                    const receiverSocketId = getReceiverSocketId(participant.id);
                     if (receiverSocketId) {
                         io.to(receiverSocketId).emit("messageDeleted", {
                             messageId,
@@ -390,10 +590,9 @@ export const deleteMessage = async (req: DeleteMessageRequest, res: Response) =>
                 });
             }
         } else {
-            // Hapus hanya untuk pengguna tertentu
             result = await prisma.message.update({
                 where: { id: messageId },
-                data: { 
+                data: {
                     deletedFor: {
                         push: req.user.id
                     }
