@@ -214,6 +214,14 @@ export const updateConversationMessageStatus = async (req: Request, res: Respons
         const { conversationId } = req.params;
         const { status } = req.body;
 
+        if (!conversationId) {  
+            return res.status(400).json({
+                code: 400,
+                status: "error",
+                message: "conversationId tidak ditemukan dalam parameter URL"
+            });
+        }
+
         if (!req.user) {
             return res.status(401).json({
                 code: 401,
@@ -230,8 +238,9 @@ export const updateConversationMessageStatus = async (req: Request, res: Respons
             });
         }
 
+        // Pastikan conversationId adalah string valid sebelum query
         const conversation = await prisma.conversation.findUnique({
-            where: { id: conversationId },
+            where: { id: conversationId.trim() }, // Trim untuk menghapus spasi yang tidak sengaja
             include: {
                 participants: {
                     select: {
@@ -249,6 +258,7 @@ export const updateConversationMessageStatus = async (req: Request, res: Respons
             });
         }
 
+        // Pastikan user adalah bagian dari percakapan
         const participantIds = conversation.participants.map(participant => participant.id);
         if (!participantIds.includes(req.user.id)) {
             return res.status(403).json({
@@ -258,9 +268,10 @@ export const updateConversationMessageStatus = async (req: Request, res: Respons
             });
         }
 
+        // Update pesan yang statusnya masih "sent" atau "delivered"
         const updatedMessages = await prisma.message.updateMany({
             where: {
-                conversationId,
+                conversationId: conversationId.trim(),
                 senderId: {
                     not: req.user.id
                 },
@@ -271,15 +282,17 @@ export const updateConversationMessageStatus = async (req: Request, res: Respons
             data: { status }
         });
 
+        // Ambil pesan terbaru setelah update
         const messages = await prisma.message.findMany({
             where: {
-                conversationId,
+                conversationId: conversationId.trim(),
                 senderId: {
                     not: req.user.id
                 }
             }
         });
 
+        // Kirim event update status ke pengirim menggunakan Socket.io
         messages.forEach(message => {
             const senderSocketId = getReceiverSocketId(message.senderId);
             if (senderSocketId) {

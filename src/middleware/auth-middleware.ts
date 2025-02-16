@@ -13,7 +13,7 @@ declare global {
                 id: string;
                 username?: string;
                 fullname?: string;
-                profilePic?: string;
+                profilePic?: string | null ;
             };
         }
     }
