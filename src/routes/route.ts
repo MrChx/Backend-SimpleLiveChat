@@ -4,6 +4,7 @@ import protectRoute from "../middleware/auth-middleware.js";
 import multer from "multer";
 import { deleteMessage, editMessage, getMessages, getUsersForSidebar, sendMessage, updateConversationMessageStatus, updateMessageStatus } from "../controller/message-controller.js";
 import { messageUpload } from "../utils/message-uploads.js";
+import { acceptFriendRequest, getFriendList, getFriendRequests, rejectFriendRequest, sendFriendRequest } from "../controller/friends-controller.js";
 
 const router: Router = express.Router();
 const upload = multer();
@@ -17,10 +18,16 @@ router.delete("/logout", protectRoute as express.RequestHandler, logout as expre
 
 router.post("/message/:id", protectRoute as express.RequestHandler, messageUpload.single('file'), sendMessage as express.RequestHandler);
 router.patch("/message/:messageId/status", protectRoute as express.RequestHandler, updateMessageStatus as express.RequestHandler);
-router.patch("/conservation/:conservationId/status", protectRoute as express.RequestHandler, updateConversationMessageStatus as express.RequestHandler);
+router.patch("/conversation/:conversationId/status", protectRoute as express.RequestHandler, updateConversationMessageStatus as express.RequestHandler);
 router.get("/message/:id", protectRoute as express.RequestHandler, getMessages as express.RequestHandler);
 router.get("/chat", protectRoute as express.RequestHandler, getUsersForSidebar as express.RequestHandler);
 router.patch("/message/:messageId", protectRoute as express.RequestHandler, editMessage as express.RequestHandler);
 router.delete("/message/:messageId", protectRoute as express.RequestHandler, deleteMessage as express.RequestHandler);
+
+router.post("/friends/request", protectRoute as express.RequestHandler, sendFriendRequest as express.RequestHandler);
+router.patch("/friends/request/accept", protectRoute as express.RequestHandler, acceptFriendRequest as express.RequestHandler);
+router.patch("/friends/request/reject", protectRoute as express.RequestHandler, rejectFriendRequest as express.RequestHandler);
+router.get("/friends/request", protectRoute as express.RequestHandler, getFriendRequests as express.RequestHandler);
+router.get("/friends/list", protectRoute as express.RequestHandler, getFriendList as express.RequestHandler);
 
 export default router;
