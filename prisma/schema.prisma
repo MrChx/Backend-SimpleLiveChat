@@ -139,6 +139,7 @@ enum RequestStatus {
   pending
   accepted
   rejected
+  blocked
 }
 
 enum MessageStatus {

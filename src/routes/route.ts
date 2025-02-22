@@ -4,7 +4,7 @@ import protectRoute from "../middleware/auth-middleware.js";
 import multer from "multer";
 import { deleteMessage, editMessage, getMessages, getUsersForSidebar, sendMessage, updateConversationMessageStatus, updateMessageStatus } from "../controller/message-controller.js";
 import { messageUpload } from "../utils/message-uploads.js";
-import { acceptFriendRequest, getFriendList, getFriendRequests, rejectFriendRequest, sendFriendRequest } from "../controller/friends-controller.js";
+import { acceptFriendRequest, blockUser, getBlockedUsers, getFriendList, getFriendRequests, getSendFriendRequest, rejectFriendRequest, sendFriendRequest, unblockUser } from "../controller/friends-controller.js";
 
 const router: Router = express.Router();
 const upload = multer();
@@ -28,6 +28,10 @@ router.post("/friends/request", protectRoute as express.RequestHandler, sendFrie
 router.patch("/friends/request/accept", protectRoute as express.RequestHandler, acceptFriendRequest as express.RequestHandler);
 router.patch("/friends/request/reject", protectRoute as express.RequestHandler, rejectFriendRequest as express.RequestHandler);
 router.get("/friends/request", protectRoute as express.RequestHandler, getFriendRequests as express.RequestHandler);
+router.get("/friends/send/request", protectRoute as express.RequestHandler, getSendFriendRequest as express.RequestHandler);
 router.get("/friends/list", protectRoute as express.RequestHandler, getFriendList as express.RequestHandler);
+router.post("/friends/block", protectRoute as express.RequestHandler, blockUser as express.RequestHandler);
+router.post("/friends/unblock", protectRoute as express.RequestHandler, unblockUser as express.RequestHandler);
+router.get("friends/blocked", protectRoute as express.RequestHandler, getBlockedUsers as express.RequestHandler);
 
 export default router;
