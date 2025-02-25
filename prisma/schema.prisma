@@ -16,10 +16,10 @@ datasource db {
 model User {
   id                    String              @id @default(cuid())
   username              String              @unique
-  fullname              String
-  password              String
-  gender                Gender
-  profilePic            String?
+  fullname             String
+  password             String
+  gender               Gender
+  profilePic           String?
   isOnline             Boolean             @default(false)
   lastSeen             DateTime?
   createdAt            DateTime            @default(now())
@@ -45,6 +45,8 @@ model User {
   // Call Logs
   outgoingCalls        CallLog[]           @relation("CallerRelation")
   incomingCalls        CallLog[]           @relation("ReceiverRelation")
+
+  @@index([username])
 }
 
 model Conversation {
@@ -118,9 +120,15 @@ model BlockedUser {
   blockerId String
   blockedId String
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  reason    String?
 
   blocker   User     @relation("BlockerRelation", fields: [blockerId], references: [id])
   blocked   User     @relation("BlockedRelation", fields: [blockedId], references: [id])
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
 }
 
 model CallLog {
