@@ -6,6 +6,7 @@ import { deleteMessage, editMessage, getMessages, getUsersForSidebar, sendMessag
 import { messageUpload } from "../utils/message-uploads.js";
 import { acceptFriendRequest, getFriendList, getFriendRequests, getSendFriendRequest, rejectFriendRequest, sendFriendRequest } from "../controller/friends-controller.js";
 import { blockUser, getBlockedUsers, unblockUser } from "../controller/block-controller.js";
+import { addMember, createGroup, deletedGroup, getGroupList, getGroupMessage, leaveGroup, removeMember, updateGroupInfo } from "../controller/group-controller.js";
 
 const router: Router = express.Router();
 const upload = multer();
@@ -35,5 +36,14 @@ router.get("/friends/list", protectRoute as express.RequestHandler, getFriendLis
 router.post("/block", protectRoute, blockUser);
 router.post("/unblock", protectRoute, unblockUser);   
 router.get("/list/block", protectRoute, getBlockedUsers);
+
+router.post("/create/group", protectRoute as express.RequestHandler, createGroup as express.RequestHandler);
+router.post("/add/member/:groupId", protectRoute as express.RequestHandler, addMember as express.RequestHandler);
+router.post("/remove/member/:groupId", protectRoute as express.RequestHandler, removeMember as express.RequestHandler);
+router.delete("/leave/:groupId", protectRoute as express.RequestHandler, leaveGroup as express.RequestHandler);
+router.delete("delete/:groupId", protectRoute as express.RequestHandler, deletedGroup as express.RequestHandler);
+router.put("/group/:groupId", protectRoute as express.RequestHandler, updateGroupInfo as express.RequestHandler);
+router.get("/group/:groupId/messages", protectRoute as express.RequestHandler, getGroupMessage as express.RequestHandler);
+router.get("/groups", protectRoute as express.RequestHandler, getGroupList as express.RequestHandler);
 
 export default router;
