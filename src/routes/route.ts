@@ -51,4 +51,6 @@ router.post("/calls/:receiverId", protectRoute, createCallLog as express.Request
 router.get("/calls/history", protectRoute, getCallHistory as express.RequestHandler);
 router.get("/calls/history/:id", protectRoute, getCallHistoryWithUser as express.RequestHandler);
 
+
+
 export default router;

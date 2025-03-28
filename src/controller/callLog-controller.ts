@@ -8,7 +8,7 @@ export const createCallLog = async (req: Request, res: Response) => {
         const { id: receiverId } = req.params;
 
         if (!req.user) {
-            return res.status(401).json({
+            return res.status(401).json({ 
                 code: 401,
                 status: "error",
                 message: "Unauthorized",
