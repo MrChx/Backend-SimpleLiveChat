@@ -8,6 +8,7 @@ import { acceptFriendRequest, getFriendList, getFriendRequests, getSendFriendReq
 import { blockUser, getBlockedUsers, unblockUser } from "../controller/block-controller.js";
 import { addMember, createGroup, deletedGroup, getGroupList, getGroupMessage, leaveGroup, removeMember, updateGroupInfo } from "../controller/group-controller.js";
 import { createCallLog, getCallHistory, getCallHistoryWithUser } from "../controller/callLog-controller.js";
+import { addReaction, getReactions, removeReaction } from "../controller/emoji-controller.js";
 
 const router: Router = express.Router();
 const upload = multer();
@@ -51,6 +52,9 @@ router.post("/calls/:receiverId", protectRoute, createCallLog as express.Request
 router.get("/calls/history", protectRoute, getCallHistory as express.RequestHandler);
 router.get("/calls/history/:id", protectRoute, getCallHistoryWithUser as express.RequestHandler);
 
+router.post("/reactions", protectRoute, addReaction as express.RequestHandler);
+router.delete("/reactions/:id", protectRoute, removeReaction as express.RequestHandler);
+router.get("/reactions/message/:messageId", protectRoute, getReactions as express.RequestHandler);
 
 
 export default router;
